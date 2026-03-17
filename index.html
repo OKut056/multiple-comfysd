@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComfySD</title>
+    <link rel="stylesheet" type="text/css" href="./style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <!-- 关机按钮（右上角） -->
+            <button
+                id="power-off-btn"
+                class="power-off-btn"
+                onclick="powerOff()"
+                title="关闭云端实例"
+            >
+                关机
+            </button>
+            <!-- 开机按钮（左上角） -->
+            <button
+                id="power-on-btn"
+                class="power-on-btn"
+                onclick="powerOn()"
+                title="开启云端实例"
+            >
+                开机
+            </button>
+            <h1>ComfyUI</h1>
+            <h1>可视化控制台</h1>
+            <p>支持文生图/图生图</p>
+        </div>
+        <!-- 手机端关机按钮占位（container 内、header 外） -->
+        <div id="power-off-mobile" style="display:none;">
+        </div>
+        <!-- 手机端开机按钮占位（container 内、header 外） -->
+        <div id="power-on-mobile" style="display:none;">
+        </div>
+
+        <div class="input-area">
+            <div class="form-group">
+                <label for="cmd-type">指令类型</label>
+                <select id="cmd-type" onchange="toggleFormFields()">
+                    <option value="text2img">文生图</option>
+                    <option value="img2img">图生图</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="prompt">提示词（生成内容）</label>
+                <textarea id="prompt" placeholder="输入生成提示词（如：1girl, blue eyes, masterpiece）"></textarea>
+            </div>
+
+            <div class="form-group" id="negative-prompt-group" style="display:none;">
+                <label for="negative-prompt">
+                    负面提示词
+                    <button 
+                        type="button" 
+                        id="save-neg-btn"
+                        onclick="saveNegativePrompt()"
+                        style="
+                            margin-left: 10px;
+                            padding: 2px 12px;
+                            font-size: 12px;
+                            background: #4a9eff;
+                            color: white;
+                            border: none;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            vertical-align: middle;
+                        "
+                    >💾 保存</button>
+                    <span id="neg-save-tip" style="margin-left:8px; font-size:12px; color:#52c41a; display:none;">
+                        ✅ 已保存
+                    </span>
+                </label>
+                <textarea 
+                    id="negative-prompt" 
+                    placeholder="输入负面提示词（如：模糊，低质量...）"
+                    style="min-height: 80px;"
+                ></textarea>
+            </div>
+
+            <!-- 文生图专属配置 -->
+            <div id="gen-config" style="display: none;">
+                <div class="flex-group" id="model-select-group">
+                    <div class="flex-item form-group">
+                        <label for="base-model">Base模型</label>
+                        <select id="base-model">
+                            <option value="1">z_image_bf16.safetensors</option>
+                            <option value="2">moodyWildMix_v10Base50steps.safetensors</option>
+                            <option value="3">radianceZ_v10.safetensors</option>
+                        </select>
+                    </div>
+                    <div class="flex-item form-group">
+                        <label for="turbo-model">Turbo模型</label>
+                        <select id="turbo-model">
+                            <option value="1">z_image_turbo_bf16.safetensors</option>
+                            <option value="2">moodyPornMix_zitV8.safetensors</option>
+                            <option value="3">pornmasterZImage_turboV1.safetensors</option>
+                            <option value="4">zImageTurboNSFW_43BF16Diffusion.safetensors</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex-group">
+                    <div class="flex-item form-group">
+                        <label for="seed-mode">种子模式</label>
+                        <select id="seed-mode" onchange="toggleSeedInput()">
+                            <option value="random">随机种子</option>
+                            <option value="fixed">固定种子</option>
+                            <option value="specify">指定种子</option>
+                        </select>
+                    </div>
+                    <div class="flex-item form-group" id="seed-input-group" style="display: none;">
+                        <label for="seed-value">指定种子值</label>
+                        <input type="number" id="seed-value" min="1" max="999999999999" placeholder="输入1-12位整数">
+                    </div>
+                </div>
+
+                <div class="form-group" id="resolution_select_group">
+                   <label>分辨率（宽 x 高，偶数）</label>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="number" id="resolution-width" value="1080" min="64" step="2"
+                            style="width: 100%; text-align: center;" placeholder="宽">
+                        <span style="font-weight: bold; font-size: 18px; color: #555;">×</span>
+                        <input type="number" id="resolution-height" value="1920" min="64" step="2"
+                            style="width: 100%; text-align: center;" placeholder="高">
+                    </div>
+                </div>
+
+                <div class="form-group" id="img-upload-group" style="display: none;">
+                    <label for="image-file">上传图片（图生图）</label>
+                    <input type="file" id="image-file" accept="image/*">
+                </div>
+            </div>
+
+            <button id="submit-btn" class="btn" onclick="submitRequest()">提交请求</button>
+        </div>
+
+        <div class="loading" id="loading">处理中，请稍候...（生成可能需要1-5分钟）</div>
+
+        <div class="result-area" id="result-area">
+            <div class="msg-content" id="result-content">
+                请输入指令并提交，结果将展示在这里...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Agent接口地址（根据实际部署的Agent地址修改）
+        const AGENT_API_URL = "/generate";
+
+        const NEGATIVE_PROMPT = "/workflow/negative-prompt";
+        
+        // 切换表单显示/隐藏
+        function toggleFormFields() {
+            const cmdType = document.getElementById("cmd-type").value;
+            const genConfig = document.getElementById("gen-config");
+            const imgUploadGroup = document.getElementById("img-upload-group");
+            const modelGroup = document.getElementById("model-select-group");
+            const resolutionGroup = document.getElementById("resolution_select_group")
+            
+            // 生成配置文生图/图生图显示
+            genConfig.style.display = "block";
+            
+            // 图生图显示图片上传
+            imgUploadGroup.style.display = cmdType === "img2img" ? "block" : "none";
+
+            // 图生图隐藏模型选择
+            modelGroup.style.display = cmdType === "img2img" ? "none" : "flex";
+
+            //
+            resolutionGroup.style.display = cmdType == "img2img" ? "none" : "flex";
+
+            // 文生图显示负面提示词，图生图隐藏
+            const negGroup = document.getElementById("negative-prompt-group");
+            if (negGroup) {
+                negGroup.style.display = cmdType === "text2img" ? "block" : "none";
+            }
+        }
+
+        // 切换种子输入框显示
+        function toggleSeedInput() {
+            const seedMode = document.getElementById("seed-mode").value;
+            const seedInputGroup = document.getElementById("seed-input-group");
+            seedInputGroup.style.display = seedMode === "specify" ? "block" : "none";
+        }
+
+        // 构造Agent指令字符串
+        function buildCommand() {
+            const cmdType = document.getElementById("cmd-type").value;
+            const prompt = document.getElementById("prompt").value.trim();
+
+            // 基础指令前缀
+            let cmdPrefix = cmdType === "text2img" ? "文生图：" : "图生图：";
+
+            // ── 种子部分（文生图/图生图均有）──
+            const seedMode = document.getElementById("seed-mode").value;
+            const seedValue = document.getElementById("seed-value").value.trim();
+            
+            let seedStr = "";
+            if (seedMode === "fixed") {
+                seedStr = "种子固定";
+            } else if (seedMode === "specify" && seedValue) {
+                seedStr = `种子：${seedValue}`;
+            } else {
+                seedStr = "种子随机";
+            }
+
+            // ── 文生图：拼接 base/turbo/分辨率 ──
+            if (cmdType === "text2img") {
+                const baseModel = document.getElementById("base-model").value;
+                const turboModel = document.getElementById("turbo-model").value;
+                const resWidth = document.getElementById("resolution-width").value.trim();
+                const resHeight = document.getElementById("resolution-height").value.trim();
+
+                const paramStr = `base=${baseModel},turbo=${turboModel},${seedStr},分辨率：${resWidth}x${resHeight}`;
+                return `${cmdPrefix}${prompt}|${paramStr}`;
+            }
+
+            // ── 图生图：只拼接种子 ──
+            return `${cmdPrefix}${prompt}|${seedStr}`;
+        }
+
+        // 提交请求到Agent
+        async function submitRequest() {
+            // 基础校验
+            const prompt = document.getElementById("prompt").value.trim();
+            if (!prompt) {
+                alert("请输入提示词/聊天内容！");
+                return;
+            }
+
+            // 元素获取
+            const submitBtn = document.getElementById("submit-btn");
+            const loading = document.getElementById("loading");
+            const resultContent = document.getElementById("result-content");
+            
+            // 状态切换
+            submitBtn.disabled = true;
+            loading.style.display = "block";
+            resultContent.innerHTML = "";
+
+            try {
+                // 构造FormData
+                const formData = new FormData();
+                const command = buildCommand();
+                formData.append("command", command);
+
+                // 追加负面提示词（文生图时有效）
+                const negPrompt = document.getElementById("negative-prompt")?.value.trim() || "";
+                formData.append("negative_prompt", negPrompt);
+
+                // 图生图添加图片文件
+                if (document.getElementById("cmd-type").value === "img2img") {
+                    const imageFile = document.getElementById("image-file").files[0];
+                    if (!imageFile) {
+                        throw new Error("图生图模式必须上传图片！");
+                    }
+                    if (imageFile.size > 20 * 1024 * 1024) {
+                        throw new Error("图片文件不能超过 20MB！");
+                    }
+                    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+                    if (!allowedTypes.includes(imageFile.type)) {
+                        throw new Error("仅支持 JPG / PNG / WebP 格式图片！");
+                    }
+                    formData.append("image_file", imageFile);
+                }
+
+                // 调用Agent接口
+                const response = await fetch( AGENT_API_URL , {
+                    method: "POST",
+                    body: formData
+                });
+
+                // 先拿原始文本，再解析
+                const rawText = await response.text();
+                console.log("[DEBUG] 原始响应:", rawText);
+
+                let result;
+                try {
+                    result = JSON.parse(rawText);
+                } catch(e) {
+                    resultContent.innerHTML = `<div class="message-item agent-msg"><div class="msg-content error">❌ 响应解析失败：${rawText || '空响应'}</div></div>`;
+                    return;
+                }
+
+                // 渲染结果
+                renderResult(result, command);
+            } catch (error) {
+                resultContent.innerHTML = `
+                    <div class="message-item agent-msg">
+                        <div class="msg-content error">
+                            ❌ 请求失败：${error.message}
+                        </div>
+                    </div>
+                `;
+            } finally {
+                // 恢复状态
+                submitBtn.disabled = false;
+                loading.style.display = "none";
+            }
+        }
+
+        // 渲染返回结果
+        function renderResult(result, command) {
+            const resultContent = document.getElementById("result-content");
+            
+            // 先渲染用户指令
+            let html = `
+                <div class="message-item user-msg">
+                    <div class="msg-content">
+                        <strong>你的指令：</strong><br>${command}
+                    </div>
+                </div>
+            `;
+
+            // 渲染Agent响应
+            if (result.status === "success") {
+                html += `
+                    <div class="message-item agent-msg">
+                        <div class="msg-content success">
+                            ${result.message}
+                        </div>
+                `;
+
+                // 生成成功且有预览图
+                if (result.preview_url) {
+                    html += `
+                        <div class="seed-info">
+                            <strong>种子信息：</strong>${result.seed}（模式：${result.seed_mode}）<br>
+                        </div>
+                        <img src="${result.preview_url}" class="preview-img" alt="生成结果">
+                    `;
+                }
+                html += `</div>`;
+            } else {
+                html += `
+                    <div class="message-item agent-msg">
+                        <div class="msg-content error">
+                            ${result.message}
+                        </div>
+                    </div>
+                `;
+            }
+
+            resultContent.innerHTML = html;
+        }
+
+        // 页面加载时，从工作流读取负面提示词并填入框中
+        async function loadNegativePrompt() {
+            try {
+                const resp = await fetch(NEGATIVE_PROMPT);
+                const data = await resp.json();
+                if (data.status === "success" && data.negative_prompt) {
+                    document.getElementById("negative-prompt").value = data.negative_prompt;
+                }
+            } catch (e) {
+                console.warn("加载负面提示词失败：", e);
+            }
+        }
+
+        // 用户点击"保存"按钮，将负面提示词写回工作流文件
+        async function saveNegativePrompt() {
+            const negPrompt = document.getElementById("negative-prompt").value.trim();
+            const btn  = document.getElementById("save-neg-btn");
+            const tip  = document.getElementById("neg-save-tip");
+
+            btn.disabled = true;
+            btn.textContent = "保存中...";
+
+            try {
+                const resp = await fetch(NEGATIVE_PROMPT, {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body:    JSON.stringify({ negative_prompt: negPrompt }),
+                });
+                const data = await resp.json();
+                if (data.status === "success") {
+                    tip.style.display = "inline";
+                    setTimeout(() => { tip.style.display = "none"; }, 3000);
+                } else {
+                    alert("保存失败：" + data.message);
+                }
+            } catch (e) {
+                alert("请求失败：" + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "💾 保存";
+            }
+        }
+
+        // 关机函数
+        async function powerOff() {
+            // 二次确认，防止误触
+            const confirmed = confirm("⚠️ 确认要关闭云端实例吗？\n关机后生成功能将无法使用，需重新开机。");
+            if (!confirmed) return;
+
+            const btn = document.getElementById("power-off-btn");
+            btn.disabled = true;
+            btn.textContent = "关机中...";
+
+            try {
+                const response = await fetch("power-off", {
+                    method: "POST",
+                });
+                const result = await response.json();
+
+                if (result.status === "success") {
+                    btn.textContent = "✅ 已关机";
+                    btn.style.backgroundColor = "#67c23a";
+                    alert("✅ 云端实例关机指令已发送成功！");
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = "⏻ 关机";
+                    alert("❌ 关机失败：" + result.message);
+                }
+            } catch (error) {
+                btn.disabled = false;
+                btn.textContent = "⏻ 关机";
+                alert("❌ 请求失败：" + error.message);
+            }
+        }
+
+        // 开机函数
+        async function powerOn() {
+            // 二次确认，防止误触
+            const confirmed = confirm("⚠️ 确认要开启云端实例吗？\n开机后将开始计费。");
+            if (!confirmed) return;
+
+            const btn = document.getElementById("power-on-btn");
+            btn.disabled = true;
+            btn.textContent = "开机中...";
+
+            try {
+                const response = await fetch("power-on", {
+                    method: "POST",
+                });
+                const result = await response.json();
+
+                if (result.status === "success") {
+                    btn.textContent = "✅ 已开机";
+                    btn.style.backgroundColor = "#67c23a";
+                    alert("✅ 云端实例开机指令已发送成功！");
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = "⏻ 开机";
+                    alert("❌ 开机失败：" + result.message);
+                }
+            } catch (error) {
+                btn.disabled = false;
+                btn.textContent = "⏻ 开机";
+                alert("❌ 请求失败：" + error.message);
+            }
+        }
+
+        // 初始化
+        window.onload = function() {
+            toggleFormFields();
+            toggleSeedInput();
+            loadNegativePrompt();
+        };
+    </script>
+</body>
+</html>

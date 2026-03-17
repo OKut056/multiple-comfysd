@@ -1,0 +1,245 @@
+{
+  "1": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "2": {
+    "inputs": {
+      "shift": 5,
+      "model": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "采样算法（AuraFlow）"
+    }
+  },
+  "4": {
+    "inputs": {
+      "samples": [
+        "13",
+        0
+      ],
+      "vae": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "5": {
+    "inputs": {
+      "text": "123444",
+      "clip": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "正向"
+    }
+  },
+  "6": {
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "lumina2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "泛黄，发绿，模糊，低分辨率，低质量图像，扭曲的肢体，诡异的外观，丑陋，AI感，噪点，网格感，JPEG压缩条纹，异常的肢体，水印，乱码，意义不明的字符，泛蓝,",
+      "clip": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "10": {
+    "inputs": {
+      "width": 1080,
+      "height": 1920,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Size"
+    }
+  },
+  "12": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": [
+        "50",
+        0
+      ],
+      "steps": [
+        "51",
+        0
+      ],
+      "cfg": 4,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "start_at_step": 0,
+      "end_at_step": [
+        "52",
+        0
+      ],
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "2",
+        0
+      ],
+      "positive": [
+        "5",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "K采样器（高级）"
+    }
+  },
+  "13": {
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": [
+        "50",
+        0
+      ],
+      "steps": [
+        "51",
+        0
+      ],
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "ddim_uniform",
+      "start_at_step": [
+        "52",
+        0
+      ],
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "19",
+        0
+      ],
+      "positive": [
+        "5",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "KSamplerAdvanced",
+    "_meta": {
+      "title": "K采样器（高级）"
+    }
+  },
+  "14": {
+    "inputs": {
+      "unet_name": "z_image_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "15": {
+    "inputs": {
+      "unet_name": "z_image_turbo_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "19": {
+    "inputs": {
+      "shift": 5,
+      "model": [
+        "15",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "采样算法（AuraFlow）"
+    }
+  },
+  "35": {
+    "inputs": {
+      "filename_prefix": "Z-Image",
+      "images": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "50": {
+    "inputs": {
+      "value": 436688579721739
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "整数"
+    }
+  },
+  "51": {
+    "inputs": {
+      "value": 12
+    },
+    "class_type": "ImpactInt",
+    "_meta": {
+      "title": "整数"
+    }
+  },
+  "52": {
+    "inputs": {
+      "value": 3
+    },
+    "class_type": "ImpactInt",
+    "_meta": {
+      "title": "整数"
+    }
+  }
+}

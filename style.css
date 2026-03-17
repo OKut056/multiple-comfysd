@@ -1,0 +1,197 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Microsoft YaHei", sans-serif;
+}
+body {
+    background-color: #f5f7fa;
+    padding: 20px;
+}
+.container {
+    max-width: 1000px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 30px;
+}
+.header {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #333;
+    position: relative;
+}
+.input-area {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+.form-group {
+    margin-bottom: 15px;
+}
+label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #555;
+}
+select, input[type="text"], input[type="number"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    min-height: 100px;
+    resize: vertical;
+}
+.flex-group {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+.flex-item {
+    flex: 1;
+    min-width: 150px;
+}
+.btn {
+    background-color: #409eff;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    width: 100%;
+    margin-top: 10px;
+}
+.btn:hover {
+    background-color: #337ecc;
+}
+.btn:disabled {
+    background-color: #90c9ff;
+    cursor: not-allowed;
+}
+.result-area {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px;
+    min-height: 200px;
+    margin-top: 20px;
+}
+.loading {
+    color: #409eff;
+    font-size: 16px;
+    text-align: center;
+    padding: 20px;
+    display: none;
+}
+.message-item {
+    margin-bottom: 15px;
+    padding: 10px;
+    border-radius: 4px;
+}
+.user-msg {
+    background-color: #f0f8ff;
+}
+.agent-msg {
+    background-color: #f8f8f8;
+}
+.msg-content {
+    line-height: 1.6;
+    color: #333;
+}
+.preview-img {
+    max-width: 100%;
+    max-height: 500px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+.error {
+    color: #f56c6c;
+    font-weight: 600;
+}
+.success {
+    color: #67c23a;
+    font-weight: 600;
+}
+.seed-info {
+    margin: 10px 0;
+    padding: 10px;
+    background-color: #fafafa;
+    border-left: 4px solid #409eff;
+}
+/* ── 关机按钮 ── */
+.power-off-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 8px 16px;
+    background-color: #f56c6c;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.1s;
+    z-index: 10;
+}
+.power-off-btn:hover {
+    background-color: #e63939;
+    transform: scale(1.03);
+}
+.power-off-btn:disabled {
+    background-color: #fab6b6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ── 开机按钮 ── */
+.power-on-btn {
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 8px 16px;
+    background-color: #f56c6c;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.1s;
+    z-index: 10;
+}
+.power-on-btn:hover {
+    background-color: #e63939;
+    transform: scale(1.03);
+}
+.power-on-btn:disabled {
+    background-color: #fab6b6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ── 手机端 input-area 宽度适配 ── */
+@media (max-width: 768px) {
+    .container {
+        padding: 15px;
+    }
+
+    .input-area {
+        padding: 12px;
+        margin-left: -5px;
+        margin-right: -5px;
+        width: calc(100% + 10px);
+    }
+}
