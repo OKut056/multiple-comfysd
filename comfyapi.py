@@ -81,10 +81,10 @@ class Config:
     # ---------- Jupyter 鉴权 Cookie ----------
     # ⚠️ 若图片无法显示，请在浏览器登录 Jupyter 后抓包替换
     TEXT2IMG_JUPYTER_COOKIE = (
-        '*****'
+        "*****"
     )
     IMG2IMG_JUPYTER_COOKIE  = (
-        '*****'
+        "*****"
     )
     TEXT2IMG_XSRF_TOKEN = "*****"
     IMG2IMG_XSRF_TOKEN = "*****"
@@ -413,6 +413,30 @@ def autodl_remote_power_on(token: str) -> dict:
             results[name] = {"error": str(e)}
     return results
     
+def autodl_get_instance_status(token: str) -> dict:
+    """调用 AutoDL API 查询两台实例状态"""
+    headers = {
+        "Authorization": token,
+        "Content-Type": "application/json",
+    }
+    results = {}
+    for name, inst_uuid in [("text2img", T_AUTODL_INSTANCE_UUID), ("img2img", I_AUTODL_INSTANCE_UUID)]:
+        try:
+            resp = requests.get(
+                url="https://www.autodl.art/api/v1/adl_dev/dev/instance/pro/status",
+                headers=headers,
+                params={"instance_uuid": inst_uuid},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            print(f"[DEBUG] {name} 状态原始响应: {json.dumps(data, ensure_ascii=False)}")
+            results[name] = data.get("data", "unknown")
+        except requests.exceptions.RequestException as e:
+            print(f"[DEBUG] {name} 请求异常: {e}")
+            results[name] = "error"
+    return results
+
 # =============================================================================
 # 3. 指令解析
 # =============================================================================
@@ -761,6 +785,37 @@ async def power_on():
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "message": "ComfyUI Agent 运行正常"}
+
+@app.get("/instance-status")
+async def instance_status():
+    """查询两台云端实例的运行状态"""
+    try:
+        results = autodl_get_instance_status(token=AUTODL_TOKEN)
+        return {"status": "success", "data": results}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    
+@app.get("/queue-status")
+async def queue_status():
+    """查询两台 ComfyUI 实例的排队状态"""
+    session = get_global_session()
+    result = {}
+    for task_type in ["text2img", "img2img"]:
+        api_url = Config.get_comfyui_api_url(task_type)
+        try:
+            resp = session.get(f"{api_url}queue", timeout=8)
+            resp.raise_for_status()
+            data = resp.json()
+            running  = len(data.get("queue_running", []))
+            pending  = len(data.get("queue_pending", []))
+            result[task_type] = {
+                "running": running,
+                "pending": pending,
+                "total":   running + pending,
+            }
+        except Exception as e:
+            result[task_type] = {"running": 0, "pending": 0, "total": -1, "error": str(e)}
+    return {"status": "success", "data": result}
 
 # =============================================================================
 # 6. 启动入口

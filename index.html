@@ -30,6 +30,17 @@
             <h1>ComfyUI</h1>
             <h1>可视化控制台</h1>
             <p>支持文生图/图生图</p>
+            <div id="instance-status-bar" style="
+                font-size: 13px;
+                margin-top: 6px;
+                display: flex;
+                gap: 16px;
+                justify-content: center;
+                flex-wrap: wrap;
+            ">
+                <span id="status-text2img">🔄 文生图实例：检测中...</span>
+                <span id="status-img2img">🔄 图生图实例：检测中...</span>
+            </div>
         </div>
         <!-- 手机端关机按钮占位（container 内、header 外） -->
         <div id="power-off-mobile" style="display:none;">
@@ -138,6 +149,18 @@
 
             <button id="submit-btn" class="btn" onclick="submitRequest()">提交请求</button>
         </div>
+
+        <div id="queue-status-bar" style="
+                margin-top: 10px;
+                font-size: 13px;
+                color: #888;
+                display: flex;
+                gap: 16px;
+                flex-wrap: wrap;
+            ">
+                <span id="queue-text2img">🔄 文生图队列：检测中...</span>
+                <span id="queue-img2img">🔄 图生图队列：检测中...</span>
+            </div>
 
         <div class="loading" id="loading">处理中，请稍候...（生成可能需要1-5分钟）</div>
 
@@ -456,11 +479,89 @@
             }
         }
 
+        // 状态标签映射
+        const STATUS_MAP = {
+            "running":  { icon: "🟢", text: "运行中" },
+            "shutdown": { icon: "🔴", text: "已关机" },
+            "starting": { icon: "🟡", text: "启动中" },
+            "stopping": { icon: "🟡", text: "关机中" },
+            "error":    { icon: "⚠️", text: "异常"   },
+            "unknown":  { icon: "❓", text: "未知"   },
+        };
+
+        async function fetchInstanceStatus() {
+            try {
+                const resp = await fetch("/instance-status");
+                const result = await resp.json();
+                if (result.status === "success") {
+                    const t = STATUS_MAP[result.data.text2img] || STATUS_MAP["unknown"];
+                    const i = STATUS_MAP[result.data.img2img]  || STATUS_MAP["unknown"];
+                    document.getElementById("status-text2img").textContent =
+                        `${t.icon} 文生图实例：${t.text}`;
+                    document.getElementById("status-img2img").textContent =
+                        `${i.icon} 图生图实例：${i.text}`;
+                }
+            } catch (e) {
+                document.getElementById("status-text2img").textContent = "⚠️ 文生图实例：检测失败";
+                document.getElementById("status-img2img").textContent  = "⚠️ 图生图实例：检测失败";
+            }
+
+            // 随机间隔 3~10 秒后再次检测
+            const delay = (3 + Math.floor(Math.random() * 7)) * 1000;
+            setTimeout(fetchInstanceStatus, delay);
+        }
+
+        async function fetchQueueStatus() {
+            const t2i = document.getElementById("queue-text2img");
+            const i2i = document.getElementById("queue-img2img");
+            try {
+                const resp = await fetch("/queue-status");
+                const result = await resp.json();
+                if (result.status === "success") {
+                    const d = result.data;
+
+                    // 文生图
+                    if (d.text2img.total === -1) {
+                        t2i.textContent = "⚠️ 文生图队列：实例离线";
+                        t2i.style.color = "#f56c6c";
+                    } else if (d.text2img.total === 0) {
+                        t2i.textContent = "✅ 文生图队列：空闲";
+                        t2i.style.color = "#52c41a";
+                    } else {
+                        t2i.textContent = `⏳ 文生图队列：运行 ${d.text2img.running} | 等待 ${d.text2img.pending}`;
+                        t2i.style.color = "#e6a23c";
+                    }
+
+                    // 图生图
+                    if (d.img2img.total === -1) {
+                        i2i.textContent = "⚠️ 图生图队列：实例离线";
+                        i2i.style.color = "#f56c6c";
+                    } else if (d.img2img.total === 0) {
+                        i2i.textContent = "✅ 图生图队列：空闲";
+                        i2i.style.color = "#52c41a";
+                    } else {
+                        i2i.textContent = `⏳ 图生图队列：运行 ${d.img2img.running} | 等待 ${d.img2img.pending}`;
+                        i2i.style.color = "#e6a23c";
+                    }
+                }
+            } catch (e) {
+                t2i.textContent = "⚠️ 文生图队列：检测失败";
+                i2i.textContent = "⚠️ 图生图队列：检测失败";
+            }
+
+            // 提交中时缩短轮询间隔，空闲时拉长
+            const submitBtn = document.getElementById("submit-btn");
+            const delay = submitBtn.disabled ? 3000 : 8000;
+            setTimeout(fetchQueueStatus, delay);
+        }
+
         // 初始化
         window.onload = function() {
             toggleFormFields();
             toggleSeedInput();
             loadNegativePrompt();
+            fetchInstanceStatus();
+            fetchQueueStatus();
         };
     </script>
 </body>
