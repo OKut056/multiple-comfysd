@@ -9,7 +9,7 @@ from typing import Optional
 from urllib3.util.retry import Retry
 from contextlib import contextmanager
 from requests.adapters import HTTPAdapter
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, urlparse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, UploadFile, File, Form, Response, Request
 import asyncio
@@ -113,7 +113,7 @@ class Config:
     }
 
     # ---------- ComfyUI 输出目录（与云端一致） ----------
-    COMFYUI_OUTPUT_DIR = "ComfyUI/output"
+    COMFYUI_OUTPUT_DIR = "ComfyUI"
 
 # =============================================================================
 # 2. 工作流工具函数
@@ -129,7 +129,7 @@ def get_session() -> requests.Session:
         total=3,                        # 最多重试 3 次
         backoff_factor=2,               # 退避因子：1s, 2s, 4s, 8s, 16s
         status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET", "POST"],
+        allowed_methods=["GET"],
         raise_on_status=False,
     )
     adapter = HTTPAdapter(
@@ -140,6 +140,31 @@ def get_session() -> requests.Session:
     session.mount("https://", adapter)
     session.mount("http://",  adapter)
     return session
+
+async def wait_for_comfyui_ready(task_type: str, timeout: int = 90, interval: int = 3) -> None:
+    """提交 prompt 前先等待 ComfyUI 就绪，避免刚开机时重复入队"""
+    api_url = Config.get_comfyui_api_url(task_type)
+    queue_url = f"{api_url}queue"
+    session = get_global_session()
+    deadline = time.time() + timeout
+    last_error = None
+
+    while time.time() < deadline:
+        try:
+            resp = session.get(queue_url, timeout=(10, 20))
+            if resp.status_code == 200:
+                resp.json()
+                return
+            last_error = f"HTTP {resp.status_code}"
+        except (requests.exceptions.ConnectionError,
+                requests.exceptions.SSLError,
+                requests.exceptions.Timeout,
+                ValueError) as e:
+            last_error = str(e)
+
+        await asyncio.sleep(interval)
+
+    raise TimeoutError(f"ComfyUI 启动后长时间未就绪：{last_error or '未知错误'}")
 
 def load_workflow(workflow_type: str) -> dict:
     """从本地 workflows 目录加载工作流 JSON，并确保包裹在 {"prompt": ...} 中"""
@@ -250,9 +275,8 @@ def upload_image_to_comfyui(image_bytes: bytes, filename: str, mimetype: str, ta
     if not image_bytes:
         raise ValueError("图片内容为空，请重新上传")
     
-    # 生成唯一文件名，避免并发覆盖，如启用，下方的"overwrite"需设为false
-    ext           = os.path.splitext(filename)[-1] or ".png"
-    unique_name   = f"{uuid.uuid4().hex}{ext}"   # 如：a3f8c1d2e4b5.png
+    # 保持前端与云端实例中的文件名一致
+    unique_name   = os.path.basename(filename) if filename else "upload.png"
 
     # 独立 session，不用全局
     session = get_session()
@@ -291,7 +315,7 @@ def upload_image_to_comfyui(image_bytes: bytes, filename: str, mimetype: str, ta
         uploaded_name = result.get("name")
         if not uploaded_name:
             raise Exception(f"ComfyUI 未返回文件名，响应：{result}")
-        return unique_name
+        return uploaded_name
     raise Exception(f"图片上传失败 HTTP {resp.status_code}：{resp.text[:300]}")
 
 async def run_comfyui_workflow(workflow: dict, task_type: str = "text2img") -> dict:
@@ -303,6 +327,8 @@ async def run_comfyui_workflow(workflow: dict, task_type: str = "text2img") -> d
     prompt_url  = f"{api_url}prompt"
     history_url = f"{api_url}history"
 
+    await wait_for_comfyui_ready(task_type)
+
     session   = get_global_session()
     prompt_id = str(uuid.uuid4())
     payload = {
@@ -313,9 +339,10 @@ async def run_comfyui_workflow(workflow: dict, task_type: str = "text2img") -> d
 
     try:
         resp = session.post(prompt_url, json=payload, timeout=30)
-    except requests.exceptions.ConnectionError:
-        session = get_session()
-        resp = session.post(prompt_url, json=payload, timeout=30)
+    except (requests.exceptions.ConnectionError,
+            requests.exceptions.SSLError,
+            requests.exceptions.Timeout) as e:
+        raise Exception(f"提交工作流失败，ComfyUI 可能刚启动或网络不稳定：{e}")
 
     if resp.status_code != 200:
         raise Exception(f"提交工作流失败 {resp.status_code}：{resp.text}")
@@ -340,6 +367,7 @@ async def run_comfyui_workflow(workflow: dict, task_type: str = "text2img") -> d
                             return {
                                 "filename":  img_info["filename"],
                                 "subfolder": img_info.get("subfolder", ""),
+                                "type":      img_info.get("type", "output"),
                             }
             retry_count = 0   # 请求成功，重置 DNS 重试计数
             await asyncio.sleep(2)
@@ -638,6 +666,8 @@ async def agent_handle(
     if parsed["error"]:
         return {"status": "error", "message": parsed["error"]}
 
+    uploaded_images = []
+
     try:
         # ── 1. 加载工作流 ──────────────────────────────────────────────────────
         if parsed["type"] == "text2img":
@@ -670,25 +700,27 @@ async def agent_handle(
                 return {"status": "error", "message": "图生图模式必须上传图片"}
             # 上传图1（必须）
             name1 = upload_image_to_comfyui(image_bytes, image_filename, image_mimetype, task_type="img2img")
+            uploaded_images.append(name1)
             print(f"[DEBUG] 图1上传成功：{name1}")
 
             # 上传图2（可选）
             name2 = None
             if image_bytes_2:
                 name2 = upload_image_to_comfyui(image_bytes_2, image_filename_2, image_mimetype_2, task_type="img2img")
+                uploaded_images.append(name2)
                 print(f"[DEBUG] 图2上传成功：{name2}")
 
             # 上传图3（可选）
             name3 = None
             if image_bytes_3:
                 name3 = upload_image_to_comfyui(image_bytes_3, image_filename_3, image_mimetype_3, task_type="img2img")
+                uploaded_images.append(name3)
                 print(f"[DEBUG] 图3上传成功：{name3}")
 
             # 注入工作流节点
             workflow = inject_images_to_workflow(workflow, name1, name2, name3)
         
         if parsed["type"] == "img2img_multi":
-            workflow = load_workflow("qwen_edit-m")
             # 1. 生成视角提示词
             angle_prompt = angles_to_prompt_english(parsed["azimuth"], parsed["elevation"], parsed["distance"])
             full_prompt = f"<sks>, {angle_prompt}, {parsed['prompt']}"
@@ -700,6 +732,7 @@ async def agent_handle(
             if not image_bytes:
                 return {"status": "error", "message": "多角度模式必须上传图片"}
             name1 = upload_image_to_comfyui(image_bytes, image_filename, image_mimetype, task_type="img2img")
+            uploaded_images.append(name1)
             
             # 注意：这里的节点ID要根据你的 qwen2511-multiple-angles.json 实际ID修改
             # 假设 LoadImage 是 "41"
@@ -712,18 +745,15 @@ async def agent_handle(
         print(f"[DEBUG] img_info={img_info}")
         img_name  = img_info["filename"]
         subfolder = img_info["subfolder"]
-        jupyter_url   = Config.get_jupyter_url(parsed["type"])
-
-        # ── 5. 构造云端文件 URL ────────────────────────────────────────────────
-        xsrf_token = Config.IMG2IMG_XSRF_TOKEN if "img2img" in parsed["type"] else Config.TEXT2IMG_XSRF_TOKEN
-        base_cloud_url = f"{jupyter_url.rstrip('/')}/jupyter/files/{Config.COMFYUI_OUTPUT_DIR}"
-        if subfolder:
-            target_url = f"{base_cloud_url}/{subfolder}/{img_name}?_xsrf={xsrf_token}"
-        else:
-            target_url = f"{base_cloud_url}/{img_name}?_xsrf={xsrf_token}"
+        asset_type = img_info.get("type", "output")
 
         # ── 6. 代理 URL（前端展示用） ───────────────────────────────────────────
-        preview_url = f"/proxy-image?url={quote(target_url)}"
+        preview_url = (
+            f"/proxy-image?task_type={quote(parsed['type'], safe='')}"
+            f"&filename={quote(img_name, safe='')}"
+            f"&subfolder={quote(subfolder, safe='')}"
+            f"&asset_type={quote(asset_type, safe='')}"
+        )
 
         # ── 7. 构造返回消息 ────────────────────────────────────────────────────
         seed_tips = f"种子：{final_seed}（模式：{parsed['seed_mode']}）"
@@ -738,6 +768,7 @@ async def agent_handle(
             "preview_url": preview_url,
             "seed":        final_seed,
             "seed_mode":   parsed["seed_mode"],
+            "uploaded_images": uploaded_images,
         }
 
     except TimeoutError as e:
@@ -870,12 +901,53 @@ async def save_negative_prompt(data: dict):
         return {"status": "error", "message": f"保存失败：{str(e)}"}
 
 @app.get("/proxy-image")
-async def proxy_image(url: str):
+async def proxy_image(
+    task_type: str,
+    filename: str,
+    subfolder: str = "",
+    asset_type: str = "output",
+):
     """
     图片代理路由：后端携带 Cookie 向 AutoDL Jupyter 发起下载，
     将原始图片字节流原封不动（含原始文件名）返回给前端。
     """
-    target_url = unquote(url)
+    session = get_global_session()
+    filename = os.path.basename(filename) or "image.png"
+    api_url = Config.get_comfyui_api_url(task_type).rstrip("/")
+    view_url = f"{api_url}/view"
+
+    try:
+        resp = session.get(
+            view_url,
+            params={
+                "filename": filename,
+                "subfolder": subfolder,
+                "type": asset_type or "output",
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        content_type = resp.headers.get("Content-Type", "image/png")
+        if content_type.startswith("image/"):
+            return Response(
+                content=resp.content,
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f'inline; filename="{filename}"',
+                    "Cache-Control": "no-store",
+                },
+            )
+        print(f"[WARN] ComfyUI /view 返回了非图片内容：{content_type}")
+    except Exception as e:
+        print(f"[WARN] ComfyUI /view 取图失败：{e}")
+
+    jupyter_url = Config.get_jupyter_url(task_type)
+    xsrf_token = Config.IMG2IMG_XSRF_TOKEN if "img2img" in task_type else Config.TEXT2IMG_XSRF_TOKEN
+    base_cloud_url = f"{jupyter_url.rstrip('/')}/jupyter/files/{Config.COMFYUI_ROOT_DIR}/{asset_type or 'output'}"
+    if subfolder:
+        target_url = f"{base_cloud_url}/{subfolder}/{filename}?_xsrf={xsrf_token}"
+    else:
+        target_url = f"{base_cloud_url}/{filename}?_xsrf={xsrf_token}"
     # 根据 URL 判断是文生图还是图生图实例，动态选择 Referer
     if Config.IMG2IMG_JUPYTER_URL.rstrip('/') in target_url:
         cookie  = Config.IMG2IMG_JUPYTER_COOKIE

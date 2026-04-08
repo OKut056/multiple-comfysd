@@ -9,6 +9,8 @@ const AGENT_API_URL = "/generate";
 
 const NEGATIVE_PROMPT = "/workflow/negative-prompt";
 
+let latestResultObjectUrl = null;
+
 // 切换表单显示/隐藏
 function toggleFormFields() {
     const cmdType = document.getElementById("cmd-type").value;
@@ -83,7 +85,7 @@ function toggleFormFields() {
                     window.threeScene.resize();
                 }
             }, 300);
-        }, 200);
+        }, 300);
     }
 }
 
@@ -349,6 +351,52 @@ async function submitRequest() {
 }
 
 // 渲染返回结果
+async function loadResultPreview(previewUrl, imgEl, statusEl) {
+    if (!previewUrl || !imgEl) return;
+
+    if (latestResultObjectUrl) {
+        URL.revokeObjectURL(latestResultObjectUrl);
+        latestResultObjectUrl = null;
+    }
+
+    if (statusEl) {
+        statusEl.textContent = "正在加载生成结果...";
+        statusEl.style.display = "block";
+    }
+
+    try {
+        const response = await fetch(
+            `${previewUrl}${previewUrl.includes("?") ? "&" : "?"}_t=${Date.now()}`,
+            { cache: "no-store" }
+        );
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        if (!blob.type.startsWith("image/")) {
+            throw new Error(`预览响应不是图片：${blob.type || "unknown"}`);
+        }
+
+        latestResultObjectUrl = URL.createObjectURL(blob);
+        imgEl.src = latestResultObjectUrl;
+        imgEl.style.display = "block";
+
+        if (statusEl) {
+            statusEl.style.display = "none";
+            statusEl.textContent = "";
+        }
+    } catch (error) {
+        imgEl.removeAttribute("src");
+        imgEl.style.display = "none";
+        if (statusEl) {
+            statusEl.textContent = `图片已生成，但预览加载失败：${error.message}`;
+            statusEl.style.display = "block";
+        }
+        console.error("生成结果预览加载失败:", error);
+    }
+}
+
 function renderResult(result, command) {
     const resultContent = document.getElementById("result-content");
     
@@ -376,7 +424,15 @@ function renderResult(result, command) {
                 <div class="seed-info">
                     <strong>种子信息：</strong>${result.seed}（模式：${result.seed_mode}）<br>
                 </div>
-                <img src="${result.preview_url}" class="preview-img" alt="生成结果">
+                <div class="msg-content" id="result-preview-status">正在加载生成结果...</div>
+                <img class="preview-img" id="result-preview-image" alt="生成结果" style="display:none;">
+            `;
+        }
+        if (result.uploaded_images && result.uploaded_images.length) {
+            html += `
+                <div class="seed-info">
+                    <strong>云端文件名：</strong>${result.uploaded_images.join("、")}
+                </div>
             `;
         }
         html += `</div>`;
@@ -391,6 +447,12 @@ function renderResult(result, command) {
     }
 
     resultContent.innerHTML = html;
+
+    if (result.status === "success" && result.preview_url) {
+        const imgEl = document.getElementById("result-preview-image");
+        const statusEl = document.getElementById("result-preview-status");
+        loadResultPreview(result.preview_url, imgEl, statusEl);
+    }
 }
 
 // 页面加载时，从工作流读取负面提示词并填入框中

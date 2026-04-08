@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ComfySD</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" type="text/css" href="./style.css">
 </head>
 <body>
@@ -55,12 +58,13 @@
                 <select id="cmd-type" onchange="toggleFormFields()">
                     <option value="text2img">文生图</option>
                     <option value="img2img">图生图</option>
+                    <option value="img2img_multi">图生图（多角度）</option>
                 </select>
             </div>
 
-            <div class="form-group">
+            <div class="form-group" id="prompt-group">
                 <label for="prompt">提示词（生成内容）</label>
-                <textarea id="prompt" placeholder="输入生成提示词（如：1girl, blue eyes, masterpiece）"></textarea>
+                <textarea id="prompt" placeholder="输入中文自然语言提示词（如：一只猫）"></textarea>
             </div>
 
             <div class="form-group" id="negative-prompt-group" style="display:none;">
@@ -142,8 +146,147 @@
                 </div>
 
                 <div class="form-group" id="img-upload-group" style="display: none;">
-                    <label for="image-file">上传图片（图生图）</label>
-                    <input type="file" id="image-file" accept="image/*">
+                    <label>上传图片（图生图参考）</label>
+                    <!-- 第二个前端的上传区结构 -->
+                    <div class="upload-zone" id="upload-zone">
+                        <input type="file" id="image-file" accept="image/*" hidden>
+                        <div class="upload-placeholder" id="upload-placeholder">
+                            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px; height:48px; opacity:0.5;">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            <p>请在此放置图片或点击上传</p>
+                        </div>
+                        <img id="preview-image" alt="Preview" style="max-width:100%; max-height:300px; display:none; border-radius: 8px;">
+                        <button type="button" id="clear-image" class="clear-btn" style="display: none !important;">×</button>
+                    </div>
+                </div>
+
+                <!-- 多角度 3D 和 滑块控制面板（默认隐藏） -->
+                <div id="multi-angle-config" style="display: none; margin-top: 15px;">
+                    <!-- 3D相机控制 -->
+                    <div class="panel-card camera-card">
+                        <h3 class="card-title">3D相机控制</h3>
+                        <p class="card-subtitle">拖拽按钮: <span class="handle-azimuth">●</span> 方位角 <span class="handle-elevation">●</span> 仰角 <span class="handle-distance">●</span> 距离</p>
+                        <div id="threejs-container" class="threejs-container"></div>
+                    </div>
+
+                    <!-- 手动控制 -->
+                    <div class="panel-card sliders-card">
+                        <h3 class="card-title">手动控制</h3>
+                        
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>方位角（水平）</label>
+                                <span id="azimuth-value" class="slider-value">0°</span>
+                            </div>
+                            <input type="range" id="azimuth-slider" min="0" max="360" step="1" value="0">
+                            <div class="slider-labels">
+                                <span>0°</span>
+                                <span>90°</span>
+                                <span>180°</span>
+                                <span>270°</span>
+                                <span>360°</span>
+                            </div>
+                        </div>
+
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>仰角（垂直角）</label>
+                                <span id="elevation-value" class="slider-value">0°</span>
+                            </div>
+                            <input type="range" id="elevation-slider" min="-30" max="90" step="1" value="0">
+                            <div class="slider-labels">
+                                <span>-30° (仰视)</span>
+                                <span>0° (平视)</span>
+                                <span>90° (俯视)</span>
+                            </div>
+                        </div>
+
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>缩放（距离）</label>
+                                <span id="distance-value" class="slider-value">5</span>
+                            </div>
+                            <input type="range" id="distance-slider" min="0" max="10" step="0.1" value="5">
+                            <div class="slider-labels">
+                                <span>0 (广角)</span>
+                                <span>5 (中景)</span>
+                                <span>10 (特写)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 参数 -->
+                        <div class="panel-card prompt-card">
+                            <h3 class="card-title">参数</h3>
+                            <div class="prompt-display" id="prompt-display">
+                                Loading...
+                            </div>
+                            <div class="extra-prompt-section">
+                                <label class="extra-prompt-label">附加提示 <span class="optional-tag">(可选)</span></label>
+                                <textarea id="extra-prompt-input" class="extra-prompt-input" placeholder="e.g. 衣物变更、背景变更...（最好单独图生图）" rows="2"></textarea>
+                            </div>
+                        </div>
+                </div>
+
+                <!-- 参考图2（可折叠） -->
+                <div class="form-group" id="img-upload-group-2" style="display: none;">
+                    <label style="display: flex; align-items: center;">
+                        <input 
+                            type="checkbox" 
+                            id="ref2-checkbox" 
+                            style="margin-right: 8px; cursor: pointer;"
+                            onclick="toggleRefImage(2)"
+                        >
+                        <span style="cursor: pointer;" onclick="toggleRefImage(2)">上传参考图2</span>
+                        <span id="ref2-arrow" style="margin-left: 8px; transition: transform 0.2s; cursor: pointer;" onclick="toggleRefImage(2)">▼</span>
+                    </label>
+                    <div id="ref2-content" style="display: none; margin-top: 10px;">
+                        <div class="upload-zone" id="upload-zone-2">
+                            <input type="file" id="image-file-2" accept="image/*" hidden>
+                            <div class="upload-placeholder" id="upload-placeholder-2">
+                                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px; height:48px; opacity:0.5;">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                                <p>请在此放置图片或点击上传</p>
+                            </div>
+                            <img id="preview-image-2" alt="Preview" style="max-width:100%; max-height:300px; display:none; border-radius: 8px;">
+                            <button type="button" id="clear-image-2" class="clear-btn" style="display: none !important;">×</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 参考图3（可折叠） -->
+                <div class="form-group" id="img-upload-group-3" style="display: none;">
+                    <label style="display: flex; align-items: center;">
+                        <input 
+                            type="checkbox" 
+                            id="ref3-checkbox" 
+                            style="margin-right: 8px; cursor: pointer;"
+                            onclick="toggleRefImage(3)"
+                        >
+                        <span style="cursor: pointer;" onclick="toggleRefImage(3)">上传参考图3</span>
+                        <span id="ref3-arrow" style="margin-left: 8px; transition: transform 0.2s; cursor: pointer;" onclick="toggleRefImage(3)">▼</span>
+                    </label>
+                    <div id="ref3-content" style="display: none; margin-top: 10px;">
+                        <div class="upload-zone" id="upload-zone-3">
+                            <input type="file" id="image-file-3" accept="image/*" hidden>
+                            <div class="upload-placeholder" id="upload-placeholder-3">
+                                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px; height:48px; opacity:0.5;">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                                <p>请在此放置图片或点击上传</p>
+                            </div>
+                            <img id="preview-image-3" alt="Preview" style="max-width:100%; max-height:300px; display:none; border-radius: 8px;">
+                            <button type="button" id="clear-image-3" class="clear-btn" style="display: none !important;">×</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -171,398 +314,41 @@
         </div>
     </div>
 
-    <script>
-        // Agent接口地址（根据实际部署的Agent地址修改）
-        const AGENT_API_URL = "/generate";
-
-        const NEGATIVE_PROMPT = "/workflow/negative-prompt";
-        
-        // 切换表单显示/隐藏
-        function toggleFormFields() {
-            const cmdType = document.getElementById("cmd-type").value;
-            const genConfig = document.getElementById("gen-config");
-            const imgUploadGroup = document.getElementById("img-upload-group");
-            const modelGroup = document.getElementById("model-select-group");
-            const resolutionGroup = document.getElementById("resolution_select_group")
-            
-            // 生成配置文生图/图生图显示
-            genConfig.style.display = "block";
-            
-            // 图生图显示图片上传
-            imgUploadGroup.style.display = cmdType === "img2img" ? "block" : "none";
-
-            // 图生图隐藏模型选择
-            modelGroup.style.display = cmdType === "img2img" ? "none" : "flex";
-
-            //
-            resolutionGroup.style.display = cmdType == "img2img" ? "none" : "flex";
-
-            // 文生图显示负面提示词，图生图隐藏
-            const negGroup = document.getElementById("negative-prompt-group");
-            if (negGroup) {
-                negGroup.style.display = cmdType === "text2img" ? "block" : "none";
-            }
-        }
-
-        // 切换种子输入框显示
-        function toggleSeedInput() {
-            const seedMode = document.getElementById("seed-mode").value;
-            const seedInputGroup = document.getElementById("seed-input-group");
-            seedInputGroup.style.display = seedMode === "specify" ? "block" : "none";
-        }
-
-        // 构造Agent指令字符串
-        function buildCommand() {
-            const cmdType = document.getElementById("cmd-type").value;
-            const prompt = document.getElementById("prompt").value.trim();
-
-            // 基础指令前缀
-            let cmdPrefix = cmdType === "text2img" ? "文生图：" : "图生图：";
-
-            // ── 种子部分（文生图/图生图均有）──
-            const seedMode = document.getElementById("seed-mode").value;
-            const seedValue = document.getElementById("seed-value").value.trim();
-            
-            let seedStr = "";
-            if (seedMode === "fixed") {
-                seedStr = "种子固定";
-            } else if (seedMode === "specify" && seedValue) {
-                seedStr = `种子：${seedValue}`;
-            } else {
-                seedStr = "种子随机";
-            }
-
-            // ── 文生图：拼接 base/turbo/分辨率 ──
-            if (cmdType === "text2img") {
-                const baseModel = document.getElementById("base-model").value;
-                const turboModel = document.getElementById("turbo-model").value;
-                const resWidth = document.getElementById("resolution-width").value.trim();
-                const resHeight = document.getElementById("resolution-height").value.trim();
-
-                const paramStr = `base=${baseModel},turbo=${turboModel},${seedStr},分辨率：${resWidth}x${resHeight}`;
-                return `${cmdPrefix}${prompt}|${paramStr}`;
-            }
-
-            // ── 图生图：只拼接种子 ──
-            return `${cmdPrefix}${prompt}|${seedStr}`;
-        }
-
-        // 提交请求到Agent
-        async function submitRequest() {
-            // 基础校验
-            const prompt = document.getElementById("prompt").value.trim();
-            if (!prompt) {
-                alert("请输入提示词/聊天内容！");
-                return;
-            }
-
-            // 元素获取
-            const submitBtn = document.getElementById("submit-btn");
-            const loading = document.getElementById("loading");
-            const resultContent = document.getElementById("result-content");
-            
-            // 状态切换
-            submitBtn.disabled = true;
-            loading.style.display = "block";
-            resultContent.innerHTML = "";
-
-            try {
-                // 构造FormData
-                const formData = new FormData();
-                const command = buildCommand();
-                formData.append("command", command);
-
-                // 追加负面提示词（文生图时有效）
-                const negPrompt = document.getElementById("negative-prompt")?.value.trim() || "";
-                formData.append("negative_prompt", negPrompt);
-
-                // 图生图添加图片文件
-                if (document.getElementById("cmd-type").value === "img2img") {
-                    const imageFile = document.getElementById("image-file").files[0];
-                    if (!imageFile) {
-                        throw new Error("图生图模式必须上传图片！");
-                    }
-                    if (imageFile.size > 20 * 1024 * 1024) {
-                        throw new Error("图片文件不能超过 20MB！");
-                    }
-                    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
-                    if (!allowedTypes.includes(imageFile.type)) {
-                        throw new Error("仅支持 JPG / PNG / WebP 格式图片！");
-                    }
-                    formData.append("image_file", imageFile);
-                }
-
-                // 调用Agent接口
-                const response = await fetch( AGENT_API_URL , {
-                    method: "POST",
-                    body: formData
-                });
-
-                // 先拿原始文本，再解析
-                const rawText = await response.text();
-                console.log("[DEBUG] 原始响应:", rawText);
-
-                let result;
-                try {
-                    result = JSON.parse(rawText);
-                } catch(e) {
-                    resultContent.innerHTML = `<div class="message-item agent-msg"><div class="msg-content error">❌ 响应解析失败：${rawText || '空响应'}</div></div>`;
-                    return;
-                }
-
-                // 渲染结果
-                renderResult(result, command);
-            } catch (error) {
-                resultContent.innerHTML = `
-                    <div class="message-item agent-msg">
-                        <div class="msg-content error">
-                            ❌ 请求失败：${error.message}
-                        </div>
-                    </div>
-                `;
-            } finally {
-                // 恢复状态
-                submitBtn.disabled = false;
-                loading.style.display = "none";
-            }
-        }
-
-        // 渲染返回结果
-        function renderResult(result, command) {
-            const resultContent = document.getElementById("result-content");
-            
-            // 先渲染用户指令
-            let html = `
-                <div class="message-item user-msg">
-                    <div class="msg-content">
-                        <strong>你的指令：</strong><br>${command}
-                    </div>
+    <!-- ══════════════ 公告弹窗 ══════════════ -->
+    <div id="notice-modal" style="display:none;">
+        <div id="notice-overlay"></div>
+        <div id="notice-dialog">
+            <div id="notice-header">
+                <span id="notice-title">📢 系统公告</span>
+                <button id="notice-close-btn" onclick="closeNoticeModal()" title="关闭">✕</button>
+            </div>
+            <div id="notice-body">
+                <p id="notice-content"></p>
+                <div id="notice-footer">
+                    <span id="notice-updated"></span>
+                    <button onclick="closeNoticeModal()">我知道了</button>
                 </div>
-            `;
+            </div>
+        </div>
+    </div>
 
-            // 渲染Agent响应
-            if (result.status === "success") {
-                html += `
-                    <div class="message-item agent-msg">
-                        <div class="msg-content success">
-                            ${result.message}
-                        </div>
-                `;
+    <!-- ══════════════ 悬浮公告按钮 ══════════════ -->
+    <div id="notice-float" onclick="openNoticeModal()" title="查看公告" style="display:none;">
+        <span>📢</span>
+        <span id="notice-float-label">公告</span>
+    </div>
 
-                // 生成成功且有预览图
-                if (result.preview_url) {
-                    html += `
-                        <div class="seed-info">
-                            <strong>种子信息：</strong>${result.seed}（模式：${result.seed_mode}）<br>
-                        </div>
-                        <img src="${result.preview_url}" class="preview-img" alt="生成结果">
-                    `;
-                }
-                html += `</div>`;
-            } else {
-                html += `
-                    <div class="message-item agent-msg">
-                        <div class="msg-content error">
-                            ${result.message}
-                        </div>
-                    </div>
-                `;
-            }
-
-            resultContent.innerHTML = html;
+    <!-- 主力 CDN：使用 Unpkg（国内访问较稳定） -->
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    
+    <!-- 备份逻辑：如果 unpkg 加载失败，自动尝试使用饿了么 CDN -->
+    <script>
+        if (typeof THREE === 'undefined') {
+            document.write('<script src="https://npm.elemecdn.com/three@0.128.0/build/three.min.js"><\/script>');
         }
-
-        // 页面加载时，从工作流读取负面提示词并填入框中
-        async function loadNegativePrompt() {
-            try {
-                const resp = await fetch(NEGATIVE_PROMPT);
-                const data = await resp.json();
-                if (data.status === "success" && data.negative_prompt) {
-                    document.getElementById("negative-prompt").value = data.negative_prompt;
-                }
-            } catch (e) {
-                console.warn("加载负面提示词失败：", e);
-            }
-        }
-
-        // 用户点击"保存"按钮，将负面提示词写回工作流文件
-        async function saveNegativePrompt() {
-            const negPrompt = document.getElementById("negative-prompt").value.trim();
-            const btn  = document.getElementById("save-neg-btn");
-            const tip  = document.getElementById("neg-save-tip");
-
-            btn.disabled = true;
-            btn.textContent = "保存中...";
-
-            try {
-                const resp = await fetch(NEGATIVE_PROMPT, {
-                    method:  "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body:    JSON.stringify({ negative_prompt: negPrompt }),
-                });
-                const data = await resp.json();
-                if (data.status === "success") {
-                    tip.style.display = "inline";
-                    setTimeout(() => { tip.style.display = "none"; }, 3000);
-                } else {
-                    alert("保存失败：" + data.message);
-                }
-            } catch (e) {
-                alert("请求失败：" + e.message);
-            } finally {
-                btn.disabled = false;
-                btn.textContent = "💾 保存";
-            }
-        }
-
-        // 关机函数
-        async function powerOff() {
-            // 二次确认，防止误触
-            const confirmed = confirm("⚠️ 确认要关闭云端实例吗？\n关机后生成功能将无法使用，需重新开机。");
-            if (!confirmed) return;
-
-            const btn = document.getElementById("power-off-btn");
-            btn.disabled = true;
-            btn.textContent = "关机中...";
-
-            try {
-                const response = await fetch("power-off", {
-                    method: "POST",
-                });
-                const result = await response.json();
-
-                if (result.status === "success") {
-                    btn.textContent = "✅ 已关机";
-                    btn.style.backgroundColor = "#67c23a";
-                    alert("✅ 云端实例关机指令已发送成功！");
-                } else {
-                    btn.disabled = false;
-                    btn.textContent = "⏻ 关机";
-                    alert("❌ 关机失败：" + result.message);
-                }
-            } catch (error) {
-                btn.disabled = false;
-                btn.textContent = "⏻ 关机";
-                alert("❌ 请求失败：" + error.message);
-            }
-        }
-
-        // 开机函数
-        async function powerOn() {
-            // 二次确认，防止误触
-            const confirmed = confirm("⚠️ 确认要开启云端实例吗？\n开机后将开始计费。");
-            if (!confirmed) return;
-
-            const btn = document.getElementById("power-on-btn");
-            btn.disabled = true;
-            btn.textContent = "开机中...";
-
-            try {
-                const response = await fetch("power-on", {
-                    method: "POST",
-                });
-                const result = await response.json();
-
-                if (result.status === "success") {
-                    btn.textContent = "✅ 已开机";
-                    btn.style.backgroundColor = "#67c23a";
-                    alert("✅ 云端实例开机指令已发送成功！");
-                } else {
-                    btn.disabled = false;
-                    btn.textContent = "⏻ 开机";
-                    alert("❌ 开机失败：" + result.message);
-                }
-            } catch (error) {
-                btn.disabled = false;
-                btn.textContent = "⏻ 开机";
-                alert("❌ 请求失败：" + error.message);
-            }
-        }
-
-        // 状态标签映射
-        const STATUS_MAP = {
-            "running":  { icon: "🟢", text: "运行中" },
-            "shutdown": { icon: "🔴", text: "已关机" },
-            "starting": { icon: "🟡", text: "启动中" },
-            "stopping": { icon: "🟡", text: "关机中" },
-            "error":    { icon: "⚠️", text: "异常"   },
-            "unknown":  { icon: "❓", text: "未知"   },
-        };
-
-        async function fetchInstanceStatus() {
-            try {
-                const resp = await fetch("/instance-status");
-                const result = await resp.json();
-                if (result.status === "success") {
-                    const t = STATUS_MAP[result.data.text2img] || STATUS_MAP["unknown"];
-                    const i = STATUS_MAP[result.data.img2img]  || STATUS_MAP["unknown"];
-                    document.getElementById("status-text2img").textContent =
-                        `${t.icon} 文生图实例：${t.text}`;
-                    document.getElementById("status-img2img").textContent =
-                        `${i.icon} 图生图实例：${i.text}`;
-                }
-            } catch (e) {
-                document.getElementById("status-text2img").textContent = "⚠️ 文生图实例：检测失败";
-                document.getElementById("status-img2img").textContent  = "⚠️ 图生图实例：检测失败";
-            }
-
-            // 随机间隔 3~10 秒后再次检测
-            const delay = (3 + Math.floor(Math.random() * 7)) * 1000;
-            setTimeout(fetchInstanceStatus, delay);
-        }
-
-        async function fetchQueueStatus() {
-            const t2i = document.getElementById("queue-text2img");
-            const i2i = document.getElementById("queue-img2img");
-            try {
-                const resp = await fetch("/queue-status");
-                const result = await resp.json();
-                if (result.status === "success") {
-                    const d = result.data;
-
-                    // 文生图
-                    if (d.text2img.total === -1) {
-                        t2i.textContent = "⚠️ 文生图队列：实例离线";
-                        t2i.style.color = "#f56c6c";
-                    } else if (d.text2img.total === 0) {
-                        t2i.textContent = "✅ 文生图队列：空闲";
-                        t2i.style.color = "#52c41a";
-                    } else {
-                        t2i.textContent = `⏳ 文生图队列：运行 ${d.text2img.running} | 等待 ${d.text2img.pending}`;
-                        t2i.style.color = "#e6a23c";
-                    }
-
-                    // 图生图
-                    if (d.img2img.total === -1) {
-                        i2i.textContent = "⚠️ 图生图队列：实例离线";
-                        i2i.style.color = "#f56c6c";
-                    } else if (d.img2img.total === 0) {
-                        i2i.textContent = "✅ 图生图队列：空闲";
-                        i2i.style.color = "#52c41a";
-                    } else {
-                        i2i.textContent = `⏳ 图生图队列：运行 ${d.img2img.running} | 等待 ${d.img2img.pending}`;
-                        i2i.style.color = "#e6a23c";
-                    }
-                }
-            } catch (e) {
-                t2i.textContent = "⚠️ 文生图队列：检测失败";
-                i2i.textContent = "⚠️ 图生图队列：检测失败";
-            }
-
-            // 提交中时缩短轮询间隔，空闲时拉长
-            const submitBtn = document.getElementById("submit-btn");
-            const delay = submitBtn.disabled ? 3000 : 8000;
-            setTimeout(fetchQueueStatus, delay);
-        }
-
-        // 初始化
-        window.onload = function() {
-            toggleFormFields();
-            toggleSeedInput();
-            loadNegativePrompt();
-            fetchInstanceStatus();
-            fetchQueueStatus();
-        };
     </script>
+
+    <script src="index.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
