@@ -39,7 +39,7 @@
   },
   "5": {
     "inputs": {
-      "text": "123444",
+      "text": "__POSITIVE_PROMPT__",
       "clip": [
         "6",
         0

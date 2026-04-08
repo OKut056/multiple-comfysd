@@ -69,11 +69,11 @@ class Config:
      # ---------- 按类型取对应地址的工具方法 ----------
     @classmethod
     def get_comfyui_api_url(cls, task_type: str) -> str:
-        return cls.IMG2IMG_COMFYUI_API_URL if task_type == "img2img" else cls.TEXT2IMG_COMFYUI_API_URL
+        return cls.IMG2IMG_COMFYUI_API_URL if "img2img" in task_type else cls.TEXT2IMG_COMFYUI_API_URL
 
     @classmethod
     def get_jupyter_url(cls, task_type: str) -> str:
-        return cls.IMG2IMG_JUPYTER_URL if task_type == "img2img" else cls.TEXT2IMG_JUPYTER_URL
+        return cls.IMG2IMG_JUPYTER_URL if "img2img" in task_type else cls.TEXT2IMG_JUPYTER_URL
 
     # ---------- 本地后端地址 ----------
     BACKEND_HOST = "*****"
@@ -92,7 +92,8 @@ class Config:
     # ---------- 工作流文件路径 ----------
     WORKFLOW_PATHS = {
         "z_image":   "/www/wwwroot/comfysd/workflows/Z-Image_双重采样工作流.json",
-        "qwen_edit": "/www/wwwroot/comfysd/workflows/Qwen-Imag-Eedit-2511-4steplora图像编辑.json",
+        "qwen_edit": "/www/wwwroot/comfysd/workflows/Qwen-Imag-Eedit-2511-4steplora多图像编辑.json",
+        "qwen_edit-m": "/www/wwwroot/comfysd/workflows/qwen2511-multiple-angles.json",
     }
 
     # ---------- 种子参数名（兼容各类工作流节点） ----------
@@ -179,7 +180,7 @@ def replace_z_image_model(workflow: dict, base_model_id: int, turbo_model_id: in
 
     return workflow
 
-def replace_prompt(workflow: dict, prompt_text: str, negative_prompt: str = "") -> dict:
+def replace_prompt(workflow: dict, full_prompt: str, negative_prompt: str = "") -> dict:
     """
     ✅ 修复版：精准替换工作流中的正向/负向提示词
     
@@ -188,7 +189,7 @@ def replace_prompt(workflow: dict, prompt_text: str, negative_prompt: str = "") 
       负向节点：CLIPTextEncode 且 _meta.title != "正向"（即 title="CLIP文本编码"）
     
     图生图工作流（Qwen）：
-      TextEncodeQwenImageEditPlus 且 title="正向" 或 prompt="123444"
+      TextEncodeQwenImageEditPlus 且 title="正向" 或 prompt="__POSITIVE_PROMPT__"
     """
     nodes = workflow.get("prompt", workflow)
 
@@ -198,20 +199,13 @@ def replace_prompt(workflow: dict, prompt_text: str, negative_prompt: str = "") 
         title      = meta.get("title", "")
         inputs     = node.get("inputs", {})
 
-        # ── 文生图：CLIPTextEncode 节点 ─────────────────────────────────────
-        if class_type == "CLIPTextEncode":
-            if title == "正向":
-                # ✅ 核心修复：用 title 精准定位正向节点，直接覆盖（不再判断是否为空）
-                nodes[node_id]["inputs"]["text"] = prompt_text
-            else:
-                # 负向节点：有传入负面提示词才替换，否则保留工作流默认值
+        # 针对所有字符串类型的输入字段，查找并替换 __POSITIVE_PROMPT__
+        for key, val in inputs.items():
+            if isinstance(val, str) and "__POSITIVE_PROMPT__" in val:
+                inputs[key] = val.replace("__POSITIVE_PROMPT__", full_prompt)
+            if class_type == "CLIPTextEncode" and title != "正向":
                 if negative_prompt:
-                    nodes[node_id]["inputs"]["text"] = negative_prompt
-
-        # ── 图生图：Qwen 图像编辑节点 ────────────────────────────────────────
-        elif class_type == "TextEncodeQwenImageEditPlus":
-            if title == "正向" or inputs.get("prompt") == "123444":
-                nodes[node_id]["inputs"]["prompt"] = prompt_text
+                    inputs["text"] = negative_prompt
 
     return workflow
 
@@ -437,6 +431,91 @@ def autodl_get_instance_status(token: str) -> dict:
             results[name] = "error"
     return results
 
+def inject_images_to_workflow(workflow: dict, name1: str, name2: str = None, name3: str = None) -> dict:
+    """
+    按需注入图片到工作流节点：
+    - 加载图像1（节点78）：始终注入 name1
+    - 加载图像2（节点396）：有 name2 则注入，否则断开 TextEncodeQwenImageEditPlus 的 image2 连接
+    - 加载图像3（节点397）：有 name3 则注入，否则断开 TextEncodeQwenImageEditPlus 的 image3 连接
+    """
+    nodes = workflow["prompt"]
+
+    # ── Step 1：注入 LoadImage 节点的图片文件名 ────────────────────────────────
+    LOAD_IMAGE_TITLE_MAP = {
+        "加载图像1": name1,
+        "加载图像2": name2,
+        "加载图像3": name3,
+    }
+    for node_id, node in nodes.items():
+        if node.get("class_type") != "LoadImage":
+            continue
+        title = node.get("_meta", {}).get("title", "")
+        if title in LOAD_IMAGE_TITLE_MAP:
+            img_name = LOAD_IMAGE_TITLE_MAP[title]
+            if img_name:
+                nodes[node_id]["inputs"]["image"] = img_name
+
+    # ── Step 2：处理 TextEncodeQwenImageEditPlus 节点的 image2 / image3 连接 ──
+    # 找到节点396和397的node_id，用于判断连接引用
+    node_id_396 = None
+    node_id_397 = None
+    for node_id, node in nodes.items():
+        title = node.get("_meta", {}).get("title", "")
+        if title == "加载图像2":
+            node_id_396 = node_id
+        elif title == "加载图像3":
+            node_id_397 = node_id
+
+    for node_id, node in nodes.items():
+        if node.get("class_type") != "TextEncodeQwenImageEditPlus":
+            continue
+
+        inputs = nodes[node_id]["inputs"]
+
+        # 处理 image2
+        if name2:
+            # 有图2：确保连接到加载图像2节点
+            if node_id_396:
+                inputs["image2"] = [node_id_396, 0]
+        else:
+            # 无图2：断开连接，移除 image2 字段（ComfyUI 会使用节点默认空图）
+            inputs.pop("image2", None)
+
+        # 处理 image3
+        if name3:
+            # 有图3：确保连接到加载图像3节点
+            if node_id_397:
+                inputs["image3"] = [node_id_397, 0]
+        else:
+            # 无图3：断开连接
+            inputs.pop("image3", None)
+
+    return workflow
+
+def angles_to_prompt_english(azimuth: float, elevation: float, distance: float) -> str:
+    """将3D数值转换为英文字向提示词，供Qwen模型理解"""
+    h_angle = int(azimuth) % 360
+    # 水平
+    if h_angle < 22.5 or h_angle >= 337.5: h_direction = "front view"
+    elif h_angle < 67.5: h_direction = "front-right quarter view"
+    elif h_angle < 112.5: h_direction = "right side view"
+    elif h_angle < 157.5: h_direction = "back-right quarter view"
+    elif h_angle < 202.5: h_direction = "back view"
+    elif h_angle < 247.5: h_direction = "back-left quarter view"
+    elif h_angle < 292.5: h_direction = "left side view"
+    else: h_direction = "front-left quarter view"
+    # 垂直
+    if elevation < -15: v_direction = "low-angle shot"
+    elif elevation < 15: v_direction = "eye-level shot"
+    elif elevation < 45: v_direction = "elevated shot"
+    else: v_direction = "high-angle shot"
+    # 距离
+    if distance < 2: dist_str = "wide shot"
+    elif distance < 6: dist_str = "medium shot"
+    else: dist_str = "close-up"
+    
+    return f"{h_direction}, {v_direction}, {dist_str}"
+
 # =============================================================================
 # 3. 指令解析
 # =============================================================================
@@ -458,6 +537,10 @@ def parse_user_command(command: str) -> dict:
         "width":          1080,
         "height":         1920,
         "error":          "",
+        # 默认角度参数，防止被Except吞掉后报 KeyError
+        "azimuth":        0.0,
+        "elevation":      0.0,
+        "distance":       5.0,
     }
 
     if not (command.startswith("文生图：") or command.startswith("图生图：")):
@@ -511,6 +594,24 @@ def parse_user_command(command: str) -> dict:
         result["error"] = "base 模型ID 超出范围（1-3）"
     if result["turbo_model_id"] not in Config.Z_IMAGE_TURBO_MODELS:
         result["error"] = "turbo 模型ID 超出范围（1-4）"
+    # command里面包含 "|种子随机"，会导致用逗号切割出报错。现在改为校验 prompt_part
+    if "视角视角: 方位角:" in prompt_part:
+        result["type"] = "img2img_multi"
+        try:
+            # prompt_part 形如： "附加提示词 (视角视角: 方位角:90°, 仰角:0°, 缩放:5.0)"
+            parts = prompt_part.split("视角视角: ")[1].replace(")", "").split(", ")
+            result["azimuth"] = float(parts[0].split(":")[1].replace("°", ""))
+            result["elevation"] = float(parts[1].split(":")[1].replace("°", ""))
+            result["distance"] = float(parts[2].split(":")[1])
+            # 提取附加提示词（括号前面的部分）
+            result["prompt"] = prompt_part.split(" (视角视角:")[0].strip()
+        except Exception as e:
+            print(f"[WARN] 多角度参数解析失败: {e}")
+
+    if result["base_model_id"] not in Config.Z_IMAGE_BASE_MODELS:
+        result["error"] = "base 模型ID 超出范围（1-3）"
+    if result["turbo_model_id"] not in Config.Z_IMAGE_TURBO_MODELS:
+        result["error"] = "turbo 模型ID 超出范围（1-4）"
 
     return result
 
@@ -519,12 +620,18 @@ def parse_user_command(command: str) -> dict:
 # =============================================================================
 
 async def agent_handle(
-    command:         str,
-    negative_prompt: str   = "",
-    image_bytes:     bytes = None,
-    image_filename:  str   = None,
-    image_mimetype:  str   = None,
-    user_id:         str   = "default",
+    command:          str,
+    negative_prompt:  str   = "",
+    image_bytes:      bytes = None,
+    image_filename:   str   = None,
+    image_mimetype:   str   = None,
+    image_bytes_2:    bytes = None,
+    image_filename_2: str   = None,
+    image_mimetype_2: str   = None,
+    image_bytes_3:    bytes = None,
+    image_filename_3: str   = None,
+    image_mimetype_3: str   = None,
+    user_id:          str   = "default",
 ) -> dict:
     """解析指令 → 修改工作流 → 调用 ComfyUI → 构造代理图片 URL → 返回结果"""
     parsed = parse_user_command(command)
@@ -540,6 +647,8 @@ async def agent_handle(
             )
         elif parsed["type"] == "img2img":
             workflow = load_workflow("qwen_edit")
+        elif parsed["type"] == "img2img_multi":
+            workflow = load_workflow("qwen_edit-m")
         else:
             return {"status": "error", "message": "不支持的指令类型"}
 
@@ -559,11 +668,42 @@ async def agent_handle(
 
             if not image_bytes:
                 return {"status": "error", "message": "图生图模式必须上传图片"}
-            uploaded_name = upload_image_to_comfyui(image_bytes, image_filename, image_mimetype, task_type=parsed["type"])
-            print(f"[DEBUG] 图片上传成功，云端文件名：{uploaded_name}")
-            for node_id, node in workflow["prompt"].items():
-                if node.get("class_type") == "LoadImage":
-                    workflow["prompt"][node_id]["inputs"]["image"] = uploaded_name
+            # 上传图1（必须）
+            name1 = upload_image_to_comfyui(image_bytes, image_filename, image_mimetype, task_type="img2img")
+            print(f"[DEBUG] 图1上传成功：{name1}")
+
+            # 上传图2（可选）
+            name2 = None
+            if image_bytes_2:
+                name2 = upload_image_to_comfyui(image_bytes_2, image_filename_2, image_mimetype_2, task_type="img2img")
+                print(f"[DEBUG] 图2上传成功：{name2}")
+
+            # 上传图3（可选）
+            name3 = None
+            if image_bytes_3:
+                name3 = upload_image_to_comfyui(image_bytes_3, image_filename_3, image_mimetype_3, task_type="img2img")
+                print(f"[DEBUG] 图3上传成功：{name3}")
+
+            # 注入工作流节点
+            workflow = inject_images_to_workflow(workflow, name1, name2, name3)
+        
+        if parsed["type"] == "img2img_multi":
+            workflow = load_workflow("qwen_edit-m")
+            # 1. 生成视角提示词
+            angle_prompt = angles_to_prompt_english(parsed["azimuth"], parsed["elevation"], parsed["distance"])
+            full_prompt = f"<sks>, {angle_prompt}, {parsed['prompt']}"
+            
+            # 2. 替换提示词
+            workflow = replace_prompt(workflow, full_prompt)
+            
+            # 3. 替换图片
+            if not image_bytes:
+                return {"status": "error", "message": "多角度模式必须上传图片"}
+            name1 = upload_image_to_comfyui(image_bytes, image_filename, image_mimetype, task_type="img2img")
+            
+            # 注意：这里的节点ID要根据你的 qwen2511-multiple-angles.json 实际ID修改
+            # 假设 LoadImage 是 "41"
+            workflow["prompt"]["41"]["inputs"]["image"] = name1
     
 
         print(f"[DEBUG] 开始提交工作流，task_type={parsed['type']}")
@@ -575,7 +715,7 @@ async def agent_handle(
         jupyter_url   = Config.get_jupyter_url(parsed["type"])
 
         # ── 5. 构造云端文件 URL ────────────────────────────────────────────────
-        xsrf_token = Config.IMG2IMG_XSRF_TOKEN if parsed["type"] == "img2img" else Config.TEXT2IMG_XSRF_TOKEN
+        xsrf_token = Config.IMG2IMG_XSRF_TOKEN if "img2img" in parsed["type"] else Config.TEXT2IMG_XSRF_TOKEN
         base_cloud_url = f"{jupyter_url.rstrip('/')}/jupyter/files/{Config.COMFYUI_OUTPUT_DIR}"
         if subfolder:
             target_url = f"{base_cloud_url}/{subfolder}/{img_name}?_xsrf={xsrf_token}"
@@ -625,8 +765,10 @@ async def generate(
     command:         str                   = Form(...),
     negative_prompt: str                   = Form(""),
     image_file:      Optional[UploadFile]  = File(None),
+    image_file_2:    Optional[UploadFile]  = File(None),
+    image_file_3:    Optional[UploadFile]  = File(None),
 ):
-    print(f"[DEBUG] 收到请求 command={command}, has_image={image_file is not None}")
+    print(f"[DEBUG] 收到请求 command={command}, has_image={image_file is not None}, has_image2={image_file_2 is not None}, has_image3={image_file_3 is not None}")
     """
     主入口：前端 POST 到根路径。
     multipart/form-data 字段：
@@ -634,37 +776,45 @@ async def generate(
       - negative_prompt  : 负面提示词（选填，文生图有效）
       - image_file       : 图生图参考图（选填）
     """
-    # 在异步路由内完成所有文件读取，绝不将 UploadFile 对象传出
-    image_bytes    = None
-    image_filename = "upload.png"
-    image_mimetype = "image/png"
-
-    if image_file is not None:
+    async def read_upload(upload: Optional[UploadFile]):
+        """读取 UploadFile，返回 (bytes, filename, mimetype)，upload 为 None 时返回三个 None"""
+        if upload is None:
+            return None, None, None
         try:
-            image_bytes = await image_file.read()   # 唯一的 await 读取点
+            data  = await upload.read()
+            fname = upload.filename     or "upload.png"
+            ftype = upload.content_type or "image/png"
+            return data, fname, ftype
         except Exception as e:
-            return {"status": "error", "message": f"文件读取失败：{str(e)}"}
+            raise Exception(f"文件读取失败：{str(e)}")
         finally:
-            await image_file.close()                # 读取后立即关闭
+            await upload.close()
 
-        image_filename = image_file.filename or "upload.png"
-        image_mimetype = image_file.content_type or "image/png"
+    # ── 读取三张图片 ──────────────────────────────────────────────────────────
+    img1_bytes, img1_filename, img1_mimetype = await read_upload(image_file)
+    img2_bytes, img2_filename, img2_mimetype = await read_upload(image_file_2)
+    img3_bytes, img3_filename, img3_mimetype = await read_upload(image_file_3)
 
-        # 防御性检查：确认读取到的是 bytes 而非协程
-        if not isinstance(image_bytes, bytes):
+    # ── 主图防御性检查 ────────────────────────────────────────────────────────
+    if img1_bytes is not None:
+        if not isinstance(img1_bytes, bytes):
             return {"status": "error", "message": "文件读取异常，请重新上传"}
-
-        if len(image_bytes) == 0:
+        if len(img1_bytes) == 0:
             return {"status": "error", "message": "上传的图片文件为空"}
 
-    # 此处 image_bytes 必定是 bytes 或 None，安全传入同步函数
     result = await agent_handle(
-        command,
-        negative_prompt,
-        image_bytes,
-        image_filename,
-        image_mimetype,
-        user_id = request.client.host,
+        command         = command,
+        negative_prompt = negative_prompt,
+        image_bytes     = img1_bytes,
+        image_filename  = img1_filename,
+        image_mimetype  = img1_mimetype,
+        image_bytes_2   = img2_bytes,
+        image_filename_2= img2_filename,
+        image_mimetype_2= img2_mimetype,
+        image_bytes_3   = img3_bytes,
+        image_filename_3= img3_filename,
+        image_mimetype_3= img3_mimetype,
+        user_id         = request.client.host,
     )
     print(f"[DEBUG] agent_handle 返回：{result}")
     return result

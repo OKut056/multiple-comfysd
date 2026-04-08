@@ -195,3 +195,495 @@ textarea {
         width: calc(100% + 10px);
     }
 }
+
+/* ══════════════ 公告弹窗遮罩 ══════════════ */
+#notice-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 9998;
+    animation: fadeIn 0.25s ease;
+}
+
+/* ══════════════ 公告对话框 ══════════════ */
+#notice-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 9999;
+    width: min(480px, 90vw);
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+    animation: slideUp 0.3s ease;
+}
+
+/*弹窗头部 */
+#notice-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+}
+
+#notice-title {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+#notice-close-btn {
+    background: rgba(255,255,255,0.25);
+    border: none;
+    color: #fff;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+#notice-close-btn:hover {
+    background: rgba(255,255,255,0.45);
+}
+
+/* 弹窗正文 */
+#notice-body {
+    padding: 20px 24px;
+}
+
+#notice-content {
+    font-size: 15px;
+    line-height: 1.8;
+    color: #333;
+    white-space: pre-wrap;/* 保留换行 */
+    word-break: break-word;margin: 0 0 16px 0;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+/* 底部栏 */
+#notice-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #f0f0f0;
+    padding-top: 12px;
+}
+
+#notice-updated {
+    font-size: 12px;
+    color: #aaa;
+}
+
+#notice-footer button {
+    padding: 7px 22px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: opacity 0.2s;
+}
+#notice-footer button:hover {
+    opacity: 0.85;
+}
+
+/* ══════════════ 右侧悬浮按钮 ══════════════ */
+#notice-float {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 9990;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    padding: 12px 8px;
+    border-radius: 10px 0 0 10px;  /* 左侧圆角，右侧贴边 */
+    cursor: pointer;
+    writing-mode: vertical-rl;      /* 文字竖排*/
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    box-shadow: -3px 0 12px rgba(102,126,234,0.4);
+    user-select: none;
+    transition: padding 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+#notice-float:hover {
+    padding: 12px 12px;
+    box-shadow: -5px 0 18px rgba(102,126,234,0.6);
+}
+
+/* ══════════════ 动画 ══════════════ */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes slideUp {
+    from { opacity: 0; transform: translate(-50%, -45%); }
+    to   { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+/* 新增的上传组件样式 */
+.upload-zone {
+    position: relative; /* 确保子级 X 按钮相对于此框定位 */
+    border: 2px dashed #d8d8d8;
+    border-radius: 8px;
+    min-height: 180px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: #fafafa;
+    overflow: hidden; /* 核心：防止子元素溢出到页面其他地方 */
+}
+
+.upload-zone:hover {
+    border-color: #409eff;
+    background: rgba(64, 158, 255, 0.05);
+}
+
+.upload-zone.drag-over {
+    border-color: #409eff;
+    background: rgba(64, 158, 255, 0.1);
+    transform: scale(1.01);
+}
+
+.upload-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: #888;
+    text-align: center;
+}
+
+#clear-image.clear-btn,
+#clear-image-2.clear-btn,
+#clear-image-3.clear-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    display: none !important; /* 初始化必须强制隐藏 */
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10;
+    align-items: center;
+    justify-content: center;
+}
+
+.clear-btn:hover {
+    background: #f56c6c;
+    transform: scale(1.1);
+}
+
+.hidden { display: none !important; }
+
+#preview-image {
+    display: block;
+    margin: 10px auto;
+    object-fit: contain;
+}
+
+/* =========================================
+   多角度 3D UI 附加样式
+========================================= */
+:root {
+    --bg-card: #f9f9f9;
+    --bg-input: #f2f2f2;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --border-color: #d8d8d8;
+    --border-focus: #b0b0b0;
+    --text-primary: #111111;
+    --text-secondary: #444444;
+    --text-muted: #888888;
+    --accent: #409eff; /* 修改为原界面的蓝色主题 */
+    --accent-glow: rgba(64, 158, 255, 0.15);
+    
+    /* 3D 把手指示器 */
+    --handle-azimuth: #E93D82;
+    --handle-elevation: #3DE9B4;
+    --handle-distance: #E9B43D;
+    
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --transition-fast: 150ms ease;
+}
+
+.panel-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 20px;
+    transition: border-color var(--transition-fast);
+}
+
+.panel-card:hover {
+    border-color: var(--border-focus);
+}
+
+.card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+    letter-spacing: 0.05em;
+}
+
+.card-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+
+.handle-azimuth { color: var(--handle-azimuth); }
+.handle-elevation { color: var(--handle-elevation); }
+.handle-distance { color: var(--handle-distance); }
+
+.threejs-container {
+    width: 100%;
+    height: 380px;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: linear-gradient(180deg, #1b2028 0%, #0d0d12 100%);
+    border: 1px solid var(--border-color);
+}
+
+.slider-group {
+    margin-bottom: 20px;
+}
+.slider-group:last-child {
+    margin-bottom: 0;
+}
+
+.slider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.slider-header label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+.slider-value {
+    font-family: monospace;
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: bold;
+    background: #e6f0fa;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+}
+
+input[type="range"] {
+    width: 100%;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--border-color);
+    border-radius: 3px;
+    cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 4px var(--accent-glow);
+}
+
+.slider-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.panel-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    transition: border-color var(--transition-fast);
+}
+
+.panel-card:hover {
+    border-color: var(--border-focus);
+}
+
+/* 参数容器 */
+.prompt-display {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 12px 16px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+}
+
+/* 悬停时的视觉反馈 */
+.prompt-display:hover {
+    border-color: #409eff;
+    background: var(--accent-glow);
+    box-shadow: 0 4px 12px rgba(64, 158, 255, 0.1);
+}
+
+/* 每一行参数的样式 */
+.param-display {
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+}
+
+/* 去掉最后一行的间距*/
+.param-display:last-child {
+    margin-bottom: 0;
+}
+
+/* 键名（如：水平角度） */
+.param-name {
+    color: var(--text-muted);
+}
+
+/* 数值（如：0°） */
+.param-value {
+    color: #409eff; /* 你的主蓝色 */
+    font-weight: 600;
+    margin-left: 4px;
+}
+
+/* 辅助说明（如：前方） */
+.param-label {
+    color: var(--text-secondary);
+    font-size: 11px;
+    margin-left: 8px;
+    opacity: 0.8;
+}
+
+/* 确保附加提示词输入框具备现代化的焦点效果 */
+.extra-prompt-section {
+    margin-top: 14px;
+}
+
+.extra-prompt-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.optional-tag {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.extra-prompt-input {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    resize: vertical;
+    transition: all var(--transition-fast);
+    line-height: 1.5;
+}
+
+/* Focus 交互 */
+.extra-prompt-input:focus {
+    outline: none;
+    border-color: #409eff;
+    background: #fff;
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.extra-prompt-input::placeholder {
+    color: var(--text-muted);
+}
+
+/* ===== 多角度图生图移动端修复 ===== */
+@media (max-width: 768px) {
+    #multi-angle-config {
+        padding: 12px;
+    }
+    
+    #threejs-container {
+        height: 280px !important;
+        min-height: 280px;
+        touch-action: none; /* 防止滚动冲突 */
+    }
+    
+    .threejs-container canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+    }
+    
+    /* 确保滑块容器不溢出 */
+    .slider-group {
+        width: 100%;
+        overflow: hidden;
+    }
+    
+    /* 参数显示区域自适应 */
+    .prompt-display {
+        font-size: 11px;
+        padding: 10px;
+    }
+    
+    .param-display {
+        flex-wrap: wrap;
+    }
+}
+
+/* 强制 Three.js 渲染器适配容器 */
+#threejs-container canvas {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
